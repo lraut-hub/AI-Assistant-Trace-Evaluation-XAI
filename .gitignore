@@ -1,0 +1,57 @@
+# ── Dependencies ───────────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# ── Next.js ────────────────────────────────────────────────────────────────────
+.next/
+out/
+
+# ── Environment ────────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Editors ────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Testing ────────────────────────────────────────────────────────────────────
+coverage/
+.coverage
+htmlcov/
+*.xml
+junit.xml
+
+# ── Turbo ──────────────────────────────────────────────────────────────────────
+.turbo/
+
+# ── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Docker volumes (local) ────────────────────────────────────────────────────
+infra/volumes/
+
+# ── Hugging Face model cache (can be large) ───────────────────────────────────
+.cache/huggingface/
+
+# ── Local dev scratch / one-off test scripts ──────────────────────────────────
+debug_*.py
+scratch_*.py
+test_output_*.json
+uv.lock
+push_to_github.ps1
