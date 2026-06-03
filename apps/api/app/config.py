@@ -25,7 +25,12 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "info"
     SECRET_KEY: str = "change_me_in_production"
     ALLOWED_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"]
+        default=[
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3000",
+            "https://*.vercel.app",
+        ]
     )
 
     # ── Groq ──────────────────────────────────────────────────────────────────
