@@ -1,0 +1,19 @@
+name: Keep Render API Alive
+
+on:
+  schedule:
+    - cron: '*/14 * * * *' # Runs every 14 minutes
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Health Endpoint
+        run: |
+          if [ -z "${{ secrets.RENDER_API_URL }}" ]; then
+            echo "Error: RENDER_API_URL secret is not set."
+            exit 1
+          fi
+          echo "Pinging API health endpoint..."
+          curl -s -f "${{ secrets.RENDER_API_URL }}/health" || echo "API ping failed, but event sent."
