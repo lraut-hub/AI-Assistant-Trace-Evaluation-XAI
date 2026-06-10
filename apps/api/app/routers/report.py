@@ -64,23 +64,48 @@ async def generate_report(request: ReportRequest):
     graph_context = _graph_to_context(request.graph)
 
     system_prompt = (
-        "You are a senior strategic analyst. "
+        "You are a senior strategic analyst producing a Structural Thinking analysis. "
         "Given a structured reasoning graph produced by an AI evaluation assistant, "
-        "write a comprehensive, well-structured analysis report in Markdown. "
-        "The report must include:\n"
-        "- An executive summary (2-3 sentences)\n"
-        "- A section-by-section breakdown of every reasoning node, preserving their logical order\n"
-        "- Key assumptions and their risk level\n"
-        "- Decision path analysis (what leads to each outcome)\n"
-        "- A final recommendation with supporting rationale\n"
-        "Use clear headings (##, ###), bullet points, and **bold** for key terms. "
-        "Be analytical, balanced, and concise."
+        "write a comprehensive analysis report in Markdown following EXACTLY this 10-section structure:\n\n"
+        "## 1. Problem Definition\n"
+        "Clearly state the core question or decision at hand.\n\n"
+        "## 2. Key Assumptions\n"
+        "List assumptions in three sub-sections:\n"
+        "### Explicit Assumptions\n"
+        "Stated or obvious assumptions.\n"
+        "### Inferred Assumptions\n"
+        "Assumptions derived from context.\n"
+        "### Missing Information\n"
+        "Data or context that is absent but would improve the analysis.\n\n"
+        "## 3. Context Mapping\n"
+        "Describe the broader context — market, stakeholders, timing, constraints.\n\n"
+        "## 4. Evidence & Signals\n"
+        "Present supporting data, trends, signals. Attach inline citation markers like [1], [2] to every claim.\n\n"
+        "## 5. Analysis Framework\n"
+        "Describe the analytical framework used (SWOT, cost-benefit, first-principles, etc.).\n\n"
+        "## 6. Alternative Perspectives\n"
+        "Present at least 2 contrarian or alternative viewpoints.\n\n"
+        "## 7. Risks & Uncertainties\n"
+        "Identify key risks, probability assessments, and mitigation strategies.\n\n"
+        "## 8. Decision Support\n"
+        "Provide a decision matrix or structured comparison of options.\n\n"
+        "## 9. Final Recommendation\n"
+        "Give a clear, actionable recommendation with supporting rationale.\n\n"
+        "## 10. Confidence Level\n"
+        "State your confidence level (Low / Medium / High) with justification.\n\n"
+        "## References\n"
+        "List all citations referenced as [1], [2], etc.\n\n"
+        "RULES:\n"
+        "- Use inline citation markers [1], [2] etc. attached to claims, evidence, and conclusions.\n"
+        "- Use clear headings (##, ###), bullet points, and **bold** for key terms.\n"
+        "- Be analytical, balanced, and concise.\n"
+        "- Every section must be present even if brief."
     )
 
     user_prompt = (
         f"Original question: {request.query}\n\n"
         f"Reasoning graph:\n{graph_context}\n\n"
-        "Write the full analysis report now."
+        "Write the full Structural Thinking analysis report now."
     )
 
     try:
@@ -91,7 +116,7 @@ async def generate_report(request: ReportRequest):
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
-            max_tokens=2048,
+            max_tokens=3000,
         )
         report_md = response.choices[0].message.content or ""
     except Exception as e:
@@ -103,35 +128,73 @@ async def generate_report(request: ReportRequest):
 
 
 def _fallback_report(query: str, graph: dict) -> str:
-    """Static markdown report used when the LLM call fails."""
+    """Static markdown report matching the 10-section Structural Thinking format."""
     sorted_nodes = sorted(
         graph.get("nodes", []),
         key=lambda n: (n.get("stage", 99), n.get("row", 0)),
     )
-    lines = [f"## Analysis Report", f"", f"**Question:** {query}", f""]
-    for i, node in enumerate(sorted_nodes, 1):
-        label = node.get("label", f"Step {i}")
-        insight = node.get("insight", "")
-        explanation = node.get("explanation", "")
+
+    # Collect all assumptions and citations across nodes
+    all_assumptions = []
+    all_citations = []
+    for node in sorted_nodes:
         assumptions = node.get("assumptions", []) or []
         citations = node.get("citations", []) or []
         assumptions = [a if isinstance(a, str) else json.dumps(a) for a in assumptions]
         citations = [c if isinstance(c, str) else (c.get("url") or c.get("title") or json.dumps(c)) if isinstance(c, dict) else str(c) for c in citations]
-        lines.append(f"### Step {i}: {label}")
-        if insight:
-            lines.append(f"**{insight}**")
-            lines.append("")
-        if explanation:
-            lines.append(explanation)
-            lines.append("")
-        notes = []
-        if assumptions:
-            notes.append(f"_Assumes: {', '.join(assumptions[:3])}_")
-        if citations:
-            notes.append(f"_Sources: {', '.join(citations[:3])}_")
-        if notes:
-            lines.append(" — ".join(notes))
-            lines.append("")
-        lines.append("---")
-        lines.append("")
+        all_assumptions.extend(assumptions)
+        all_citations.extend(citations)
+
+    # Build node summaries for Evidence section
+    evidence_lines = []
+    for i, node in enumerate(sorted_nodes, 1):
+        label = node.get("label", f"Step {i}")
+        insight = node.get("insight", "")
+        explanation = node.get("explanation", "")
+        short_exp = explanation[:300] + ("..." if len(explanation) > 300 else "") if explanation else ""
+        evidence_lines.append(f"- **{label}**: {insight}")
+        if short_exp:
+            evidence_lines.append(f"  {short_exp}")
+
+    lines = [
+        f"## 1. Problem Definition", "",
+        f"**Question:** {query}", "",
+
+        f"## 2. Key Assumptions", "",
+        f"### Explicit Assumptions",
+        *([f"- {a}" for a in all_assumptions[:3]] if all_assumptions else ["- _No explicit assumptions identified._"]),
+        "",
+        f"### Inferred Assumptions",
+        "- _Analysis based on available graph data._", "",
+        f"### Missing Information",
+        "- _Additional context may improve this analysis._", "",
+
+        f"## 3. Context Mapping", "",
+        "Context derived from the reasoning graph nodes above.", "",
+
+        f"## 4. Evidence & Signals", "",
+        *evidence_lines, "",
+
+        f"## 5. Analysis Framework", "",
+        "Structured reasoning graph with multi-node analysis.", "",
+
+        f"## 6. Alternative Perspectives", "",
+        "- _Alternative viewpoints were not generated due to LLM unavailability._", "",
+
+        f"## 7. Risks & Uncertainties", "",
+        "- _Risk assessment unavailable — LLM fallback active._", "",
+
+        f"## 8. Decision Support", "",
+        "- Review the reasoning graph canvas for decision pathways.", "",
+
+        f"## 9. Final Recommendation", "",
+        "- _Please regenerate with LLM for a detailed recommendation._", "",
+
+        f"## 10. Confidence Level", "",
+        "**Low** — This is a fallback report without LLM analysis.", "",
+
+        f"## References", "",
+        *([f"[{i+1}] {c}" for i, c in enumerate(all_citations[:5])] if all_citations else ["_No citations available._"]),
+        "",
+    ]
     return "\n".join(lines)

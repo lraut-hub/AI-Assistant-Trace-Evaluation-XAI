@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.config import settings
-from app.routers import health, chat, eval, sessions, documents, report
+from app.routers import health, chat, eval, sessions, documents, report, classify
 from app.logging_config import configure_logging
 from app.db import init_db
 
@@ -53,4 +53,5 @@ app.include_router(eval.router, prefix="/api/v1", tags=["Trace"])
 app.include_router(sessions.router, prefix="/api/v1", tags=["Sessions"])
 app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
 app.include_router(report.router, prefix="/api/v1", tags=["Report"])
+app.include_router(classify.router, prefix="/api/v1", tags=["Classify"])
 

@@ -18,15 +18,15 @@ function ModeSelector({ currentMode }: { currentMode: 'Standard' | 'Trace' }) {
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         style={{ 
-          fontSize: 'var(--font-size-xs)', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', 
-          padding: '4px 8px', background: 'var(--color-bg-elevated)', borderRadius: 'var(--radius-full)', 
+          fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', 
+          padding: '4px 8px', background: 'transparent', borderRadius: 'var(--radius-full)', 
           border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
           transition: 'background var(--transition-fast)' 
         }}
-        onMouseOver={(e) => e.currentTarget.style.background = 'var(--color-sidebar-hover)'}
-        onMouseOut={(e) => e.currentTarget.style.background = 'var(--color-bg-elevated)'}
+        onMouseOver={(e) => { e.currentTarget.style.background = 'var(--color-sidebar-hover)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+        onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
       >
-        {currentMode} <ChevronUp size={12} />
+        {currentMode} ⌄
       </button>
       
       {isOpen && (
@@ -62,6 +62,38 @@ function ModeSelector({ currentMode }: { currentMode: 'Standard' | 'Trace' }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function TraceNudge() {
+  const router = useRouter();
+  const [visible, setVisible] = useState(true);
+  const [exiting, setExiting] = useState(false);
+
+  const handleDismiss = () => {
+    setExiting(true);
+    setTimeout(() => setVisible(false), 300);
+  };
+
+  const handleUseTrace = () => {
+    router.push('/trace');
+  };
+
+  if (!visible) return null;
+
+  return (
+    <div className={`trace-nudge ${exiting ? 'trace-nudge--exiting' : ''}`} id="trace-nudge">
+      <span className="trace-nudge__icon">◇</span>
+      <span className="trace-nudge__text">
+        Analyzing competitors, markets, products, or strategic decisions? Use Trace for a structured intelligence breakdown and decision support.
+      </span>
+      <button className="trace-nudge__cta" onClick={handleUseTrace}>
+        Use Trace
+      </button>
+      <button className="trace-nudge__dismiss" onClick={handleDismiss} aria-label="Dismiss">
+        ✕
+      </button>
     </div>
   );
 }
@@ -185,10 +217,11 @@ function ChatContent() {
       {/* Main Area */}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {isEmpty ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <h1 className="gemini-greeting">
-              Ask away, User!
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-6)' }}>
+            <h1 className="gemini-greeting" style={{ fontWeight: 400, letterSpacing: '-0.02em' }}>
+              Your move!
             </h1>
+            <TraceNudge />
           </div>
         ) : (
           <div style={{ padding: 'var(--space-6)', maxWidth: '1000px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -268,7 +301,7 @@ function ChatContent() {
             onClick={() => fileInputRef.current?.click()}
             disabled={isGenerating}
             className="gemini-input__btn"
-            style={{ fontSize: '18px', flexShrink: 0 }}
+            style={{ fontSize: '24px', flexShrink: 0, paddingBottom: '2px', fontWeight: 300, color: 'var(--color-text-secondary)' }}
           >
             +
           </button>
@@ -276,8 +309,9 @@ function ChatContent() {
           <input 
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask AI Assistant..."
+            placeholder="Ask AI Assistant"
             disabled={isGenerating}
+            style={{ fontSize: '16px' }}
           />
           
           <div className="gemini-input__actions">
@@ -293,6 +327,7 @@ function ChatContent() {
               <button 
                 type="submit"
                 className="gemini-input__btn gemini-input__btn--accent"
+                style={{ background: 'var(--color-text-primary)', color: '#131314' }}
               >
                 <Send size={16} />
               </button>

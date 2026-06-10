@@ -15,20 +15,98 @@ const SUGGESTIONS = [
   "Evaluate entering the EV charging market in Tier-2 Indian cities",
 ];
 
-// Simple markdown to HTML converter for the analysis report
+// ── Progress phases for the progressive analysis overlay ──
+const ANALYSIS_PHASES = [
+  { label: 'Understanding Problem', threshold: 0 },
+  { label: 'Building Assumptions', threshold: 15 },
+  { label: 'Gathering Evidence', threshold: 30 },
+  { label: 'Performing Analysis', threshold: 50 },
+  { label: 'Constructing Decision Framework', threshold: 70 },
+  { label: 'Generating Final Recommendation', threshold: 85 },
+];
+
+function getPhaseForProgress(progress: number): string {
+  let phase = ANALYSIS_PHASES[0].label;
+  for (const p of ANALYSIS_PHASES) {
+    if (progress >= p.threshold) phase = p.label;
+  }
+  return phase;
+}
+
+// ── Markdown to HTML with citation marker support ──
 function markdownToHtml(md: string): string {
   return md
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^\> (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/^\\> (.+)$/gm, '<blockquote>$1</blockquote>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/^---$/gm, '<hr/>')
     .replace(/\n\n/g, '<br/><br/>')
     .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
-    .replace(/<\/ul>\s*<ul>/g, '');
+    .replace(/<\/ul>\s*<ul>/g, '')
+    // Citation markers: [1], [2] etc. → clickable superscript spans
+    .replace(/\[(\d+)\]/g, '<span class="citation-marker" data-cite="$1" title="Citation $1">$1</span>');
+}
+
+// ── Progress Overlay Component ──
+function ProgressOverlay({ progress, isCompleting }: { progress: number; isCompleting: boolean }) {
+  const phase = getPhaseForProgress(progress);
+
+  return (
+    <div className={`progress-overlay ${isCompleting ? 'progress-overlay--completing' : ''}`}>
+      <div className="progress-overlay__container">
+        <div className="progress-overlay__percentage">{Math.round(progress)}%</div>
+        <div className="progress-overlay__bar-track">
+          <div
+            className="progress-overlay__bar-fill"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className="progress-overlay__phase">
+          <div className="progress-overlay__phase-dot" />
+          {phase}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Evaluation History Tab ──
+interface EvalSession {
+  id: string;
+  title: string;
+  graphData: any;
+  chatHistory: Array<{role: string, content: string, isAnalysis?: boolean}>;
+}
+
+function EvalHistoryBar({
+  sessions,
+  activeId,
+  onSwitch,
+}: {
+  sessions: EvalSession[];
+  activeId: string;
+  onSwitch: (id: string) => void;
+}) {
+  if (sessions.length <= 1) return null;
+
+  return (
+    <div className="eval-history" id="eval-history-bar">
+      {sessions.map((s) => (
+        <button
+          key={s.id}
+          className={`eval-history__pill ${s.id === activeId ? 'eval-history__pill--active' : ''}`}
+          onClick={() => onSwitch(s.id)}
+        >
+          {s.id === activeId && <span className="eval-history__pill-dot" />}
+          {s.title}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function ModeSelector({ currentMode }: { currentMode: 'Standard' | 'Trace' }) {
@@ -102,6 +180,15 @@ export default function TracePage() {
   const [chatHistory, setChatHistory] = useState<Array<{role: string, content: string, isAnalysis?: boolean}>>([]);
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
   
+  // Progressive analysis state
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [isProgressCompleting, setIsProgressCompleting] = useState(false);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Evaluation history state
+  const [evalSessions, setEvalSessions] = useState<EvalSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>('');
+
   const inputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -120,25 +207,138 @@ export default function TracePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNode]);
 
+  // Clean up progress timer on unmount
+  useEffect(() => {
+    return () => {
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    };
+  }, []);
+
+  // ── Start synthetic progress simulation ──
+  const startProgressSimulation = useCallback(() => {
+    setAnalysisProgress(0);
+    setIsProgressCompleting(false);
+
+    let current = 0;
+    progressTimerRef.current = setInterval(() => {
+      // Slow down as we approach 90% (never reach 100% until real completion)
+      const remaining = 90 - current;
+      const increment = Math.max(0.3, remaining * 0.04);
+      current = Math.min(90, current + increment);
+      setAnalysisProgress(current);
+    }, 200);
+  }, []);
+
+  const completeProgress = useCallback(() => {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+    setAnalysisProgress(100);
+    setIsProgressCompleting(true);
+    // Remove the overlay after the fade-out animation
+    setTimeout(() => {
+      setIsProgressCompleting(false);
+      setAnalysisProgress(0);
+    }, 1200);
+  }, []);
+
+  // ── Classify query as follow_up or new_topic ──
+  const classifyQuery = useCallback(async (query: string): Promise<'follow_up' | 'new_topic'> => {
+    if (chatHistory.length === 0) return 'new_topic';
+    
+    try {
+      const res = await fetch(`${API_V1}/eval/classify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query,
+          conversation_history: chatHistory.map(m => ({ role: m.role, content: m.content.substring(0, 200) })),
+        }),
+      });
+      if (!res.ok) return 'new_topic';
+      const data = await res.json();
+      return data.type === 'follow_up' ? 'follow_up' : 'new_topic';
+    } catch {
+      return 'new_topic';
+    }
+  }, [chatHistory]);
+
+  // ── Save current session to history ──
+  const saveCurrentSession = useCallback(() => {
+    if (!graphData || chatHistory.length === 0) return;
+
+    const userMessages = chatHistory.filter(m => m.role === 'user');
+    const title = userMessages[0]?.content?.substring(0, 40) + '...' || 'Evaluation';
+    const sessionId = activeSessionId || `eval-${Date.now()}`;
+
+    setEvalSessions(prev => {
+      const existing = prev.findIndex(s => s.id === sessionId);
+      const session: EvalSession = { id: sessionId, title, graphData, chatHistory };
+      if (existing >= 0) {
+        const updated = [...prev];
+        updated[existing] = session;
+        return updated;
+      }
+      return [...prev, session];
+    });
+
+    return sessionId;
+  }, [graphData, chatHistory, activeSessionId]);
+
+  // ── Switch between evaluation sessions ──
+  const switchToSession = useCallback((sessionId: string) => {
+    const session = evalSessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    // Save current before switching
+    saveCurrentSession();
+
+    setGraphData(session.graphData);
+    setChatHistory(session.chatHistory);
+    setActiveSessionId(sessionId);
+    setSelectedNode(null);
+  }, [evalSessions, saveCurrentSession]);
+
   const handleSubmit = async (e?: React.FormEvent, overrideQuery?: string) => {
     if (e) e.preventDefault();
     const query = overrideQuery || input.trim();
     if (!query || isGenerating) return;
 
-    // Add user message to chat history
-    setChatHistory(prev => [...prev, { role: 'user', content: query }]);
+    // Classify the query
+    const queryType = await classifyQuery(query);
+
+    if (queryType === 'new_topic' && graphData) {
+      // Save current evaluation to history before starting new one
+      const savedId = saveCurrentSession();
+      
+      // Start fresh
+      const newId = `eval-${Date.now()}`;
+      setActiveSessionId(newId);
+      setChatHistory([{ role: 'user', content: query }]);
+      setGraphData(null);
+      setSelectedNode(null);
+    } else {
+      // Follow-up: keep existing canvas and chat
+      setChatHistory(prev => [...prev, { role: 'user', content: query }]);
+    }
 
     setInput('');
     setIsGenerating(true);
-    setGraphData(null);
-    setSelectedNode(null);
+    if (queryType === 'new_topic') {
+      setGraphData(null);
+      setSelectedNode(null);
+    }
     setStatusText('Framing decision...');
+
+    // Start progressive analysis overlay
+    startProgressSimulation();
 
     try {
       const res = await fetch(`${API_V1}/trace/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, session_id: "trace-session-1" }),
+        body: JSON.stringify({ query, session_id: activeSessionId || "trace-session-1" }),
       });
 
       if (!res.ok) throw new Error("Network error");
@@ -167,18 +367,29 @@ export default function TracePage() {
           if (dataStr === "[DONE]") {
             setIsGenerating(false);
             setStatusText('');
+            completeProgress();
             setChatHistory(prev => [...prev, { role: 'assistant', content: 'Trace generation complete. Explore the canvas or request a Full Analysis.' }]);
             done = true;
             break;
           }
           try {
             const data = JSON.parse(dataStr);
-            if (data.status === 'planning') setStatusText('Scanning outside + building gates...');
-            if (data.status === 'reasoning') setStatusText('Tracing internals and identity paths...');
-            if (data.graph) setGraphData(data.graph);
+            if (data.status === 'planning') {
+              setStatusText('Scanning outside + building gates...');
+              setAnalysisProgress(prev => Math.max(prev, 20));
+            }
+            if (data.status === 'reasoning') {
+              setStatusText('Tracing internals and identity paths...');
+              setAnalysisProgress(prev => Math.max(prev, 55));
+            }
+            if (data.graph) {
+              setGraphData(data.graph);
+              setAnalysisProgress(prev => Math.max(prev, 80));
+            }
             if (data.type === 'error') {
               setStatusText(data.message || 'Trace generation failed.');
               setIsGenerating(false);
+              completeProgress();
             }
           } catch {
             /* skip malformed/partial SSE line */
@@ -188,6 +399,7 @@ export default function TracePage() {
     } catch (err) {
       console.error(err);
       setStatusText('Error connecting to Trace backend.');
+      completeProgress();
     } finally {
       setIsGenerating(false);
     }
@@ -205,7 +417,7 @@ export default function TracePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query: input, // Need last query? Usually we can just pass the context
-        session_id: "trace-session-1",
+        session_id: activeSessionId || "trace-session-1",
         graph: graphData,
         node_id: nodeId,
         directive,
@@ -250,7 +462,12 @@ export default function TracePage() {
   }, [graphData, chatHistory]);
 
   return (
-    <div style={{ display: 'flex', height: '100%', position: 'relative' }}>
+    <div style={{ display: 'flex', height: '100%', position: 'relative', flexDirection: 'column' }}>
+
+      {/* Evaluation History Bar */}
+      <EvalHistoryBar sessions={evalSessions} activeId={activeSessionId} onSwitch={switchToSession} />
+      
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       
       {/* 1. Left Chat Window */}
       <div style={{
@@ -438,8 +655,18 @@ export default function TracePage() {
           </div>
         )}
 
+        {/* Progressive Analysis Overlay */}
+        {(isGenerating || isProgressCompleting) && graphData && (
+          <ProgressOverlay progress={analysisProgress} isCompleting={isProgressCompleting} />
+        )}
+
         {graphData ? (
           <CanvasPanel graphData={graphData} onNodeClick={(n) => { setSelectedNode(n); setIsDetailCollapsed(false); }} />
+        ) : isGenerating ? (
+          /* Show progress overlay even before graph data arrives */
+          <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <ProgressOverlay progress={analysisProgress} isCompleting={false} />
+          </div>
         ) : (
           <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
             <div style={{ textAlign: 'center' }}>
@@ -489,6 +716,7 @@ export default function TracePage() {
           />
         </div>
       )}
+      </div>
     </div>
   );
 }

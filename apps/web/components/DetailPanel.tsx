@@ -27,8 +27,44 @@ const citationToString = (cit: any): string => {
 // Safely coerce an assumption item to string
 const assumptionToString = (a: any): string => {
   if (typeof a === 'string') return a;
+  if (typeof a === 'object' && a !== null) {
+    return a.text || a.description || a.assumption || JSON.stringify(a);
+  }
   return JSON.stringify(a);
 };
+
+// Categorize an assumption into explicit, inferred, or missing
+const categorizeAssumption = (a: any): 'explicit' | 'inferred' | 'missing' => {
+  if (typeof a === 'object' && a !== null && a.type) {
+    const t = String(a.type).toLowerCase();
+    if (t.includes('explicit') || t.includes('stated')) return 'explicit';
+    if (t.includes('missing') || t.includes('absent') || t.includes('unknown')) return 'missing';
+    return 'inferred';
+  }
+  // Text-based heuristic
+  const text = assumptionToString(a).toLowerCase();
+  if (text.includes('unknown') || text.includes('missing') || text.includes('not available') || text.includes('no data')) return 'missing';
+  if (text.includes('assume') || text.includes('likely') || text.includes('inferred') || text.includes('estimated')) return 'inferred';
+  return 'explicit';
+};
+
+// Citation popup component
+function CitationPopup({ citation, onClose }: { citation: string; onClose: () => void }) {
+  const isUrl = citation.startsWith('http://') || citation.startsWith('https://');
+
+  return (
+    <div className="citation-popup" onClick={(e) => e.stopPropagation()}>
+      <div className="citation-popup__label">Source</div>
+      {isUrl ? (
+        <a href={citation} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', wordBreak: 'break-all' }}>
+          {(() => { try { return new URL(citation).hostname; } catch { return citation; } })()}
+        </a>
+      ) : (
+        <span>{citation}</span>
+      )}
+    </div>
+  );
+}
 
 interface DetailPanelProps {
   selectedNode: any;
@@ -40,6 +76,7 @@ interface DetailPanelProps {
 
 export default function DetailPanel({ selectedNode, onClose, onReviseNode, isCollapsed, onToggleCollapse }: DetailPanelProps) {
   const [isRevising, setIsRevising] = useState(false);
+  const [activeCitation, setActiveCitation] = useState<number | null>(null);
 
   const handleRevise = async (directive: string) => {
     if (!onReviseNode || !selectedNode) return;
@@ -53,6 +90,21 @@ export default function DetailPanel({ selectedNode, onClose, onReviseNode, isCol
       setIsRevising(false);
     }
   };
+
+  // Group assumptions by category
+  const getGroupedAssumptions = () => {
+    if (!selectedNode?.assumptions || selectedNode.assumptions.length === 0) return null;
+
+    const groups: Record<string, any[]> = { explicit: [], inferred: [], missing: [] };
+    for (const a of selectedNode.assumptions) {
+      const category = categorizeAssumption(a);
+      groups[category].push(a);
+    }
+    return groups;
+  };
+
+  const groupedAssumptions = selectedNode ? getGroupedAssumptions() : null;
+  const citations = selectedNode?.citations || [];
 
   return (
     <div className={`detail-panel ${isCollapsed ? 'detail-panel--collapsed' : ''}`}>
@@ -150,47 +202,80 @@ export default function DetailPanel({ selectedNode, onClose, onReviseNode, isCol
               </div>
             </div>
 
-            {/* Assumptions */}
-            {selectedNode.assumptions && selectedNode.assumptions.length > 0 && (
+            {/* Assumptions — Categorized */}
+            {groupedAssumptions && (
               <div style={{ marginBottom: 'var(--space-6)' }}>
-                <h4 style={{ marginBottom: 'var(--space-2)', color: 'var(--color-warning)', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                <h4 style={{ marginBottom: 'var(--space-3)', color: 'var(--color-text-primary)', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                   Key Assumptions
                 </h4>
-                <ul style={{ paddingLeft: 'var(--space-4)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-                  {selectedNode.assumptions.map((ass: any, i: number) => (
-                    <li key={i} style={{ marginBottom: '4px' }}>{assumptionToString(ass)}</li>
-                  ))}
-                </ul>
+
+                {groupedAssumptions.explicit.length > 0 && (
+                  <div className="assumption-section">
+                    <div className="assumption-section__badge assumption-section__badge--explicit">
+                      ✓ Explicit
+                    </div>
+                    <ul className="assumption-section__list">
+                      {groupedAssumptions.explicit.map((a: any, i: number) => (
+                        <li key={`explicit-${i}`}>{assumptionToString(a)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {groupedAssumptions.inferred.length > 0 && (
+                  <div className="assumption-section">
+                    <div className="assumption-section__badge assumption-section__badge--inferred">
+                      ⚡ Inferred
+                    </div>
+                    <ul className="assumption-section__list">
+                      {groupedAssumptions.inferred.map((a: any, i: number) => (
+                        <li key={`inferred-${i}`}>{assumptionToString(a)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {groupedAssumptions.missing.length > 0 && (
+                  <div className="assumption-section">
+                    <div className="assumption-section__badge assumption-section__badge--missing">
+                      ⚠ Missing Info
+                    </div>
+                    <ul className="assumption-section__list">
+                      {groupedAssumptions.missing.map((a: any, i: number) => (
+                        <li key={`missing-${i}`}>{assumptionToString(a)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Citations */}
-            {selectedNode.citations && selectedNode.citations.length > 0 && (
+            {/* Citations with floating popups */}
+            {citations.length > 0 && (
               <div style={{ marginBottom: 'var(--space-6)' }}>
                 <h4 style={{ marginBottom: 'var(--space-2)', color: 'var(--color-success)', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                   Citations & Evidence
                 </h4>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {selectedNode.citations.map((cit: any, i: number) => {
+                  {citations.map((cit: any, i: number) => {
                     const citStr = citationToString(cit);
                     const isUrl = citStr.startsWith('http://') || citStr.startsWith('https://');
-                    return isUrl ? (
-                      <a key={i} href={citStr} target="_blank" rel="noopener noreferrer" style={{
-                        background: 'var(--color-bg-elevated)', padding: '4px 10px',
-                        borderRadius: 'var(--radius-sm)', fontSize: 'var(--font-size-xs)',
-                        color: 'var(--color-accent)', textDecoration: 'none',
-                        border: '1px solid var(--color-border-subtle)'
-                      }}>
-                        🔗 {(() => { try { return new URL(citStr).hostname; } catch { return citStr; } })()}
-                      </a>
-                    ) : (
-                      <span key={i} style={{
-                        background: 'var(--color-bg-elevated)', padding: '4px 10px',
-                        borderRadius: 'var(--radius-sm)', fontSize: 'var(--font-size-xs)',
-                        border: '1px solid var(--color-border-subtle)'
-                      }}>
-                        📄 {citStr}
-                      </span>
+                    return (
+                      <div key={i} style={{ position: 'relative' }}>
+                        <span
+                          className="citation-marker"
+                          onClick={() => setActiveCitation(activeCitation === i ? null : i)}
+                          style={{ cursor: 'pointer', fontSize: 'var(--font-size-xs)', width: 'auto', height: 'auto', padding: '4px 10px', verticalAlign: 'baseline' }}
+                        >
+                          [{i + 1}] {isUrl
+                            ? (() => { try { return new URL(citStr).hostname; } catch { return citStr; } })()
+                            : (citStr.length > 30 ? citStr.substring(0, 30) + '...' : citStr)
+                          }
+                        </span>
+                        {activeCitation === i && (
+                          <CitationPopup citation={citStr} onClose={() => setActiveCitation(null)} />
+                        )}
+                      </div>
                     );
                   })}
                 </div>

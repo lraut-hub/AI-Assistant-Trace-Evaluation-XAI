@@ -97,7 +97,43 @@ function GateNodeComponent({ data }: NodeProps) {
   );
 }
 
+function GroupNodeComponent({ data }: NodeProps) {
+  const label = data?.label as string;
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        background: 'rgba(30, 30, 40, 0.55)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 12,
+        position: 'relative',
+      }}
+    >
+      {label && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 12,
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            color: 'rgba(255,255,255,0.35)',
+            textTransform: 'uppercase',
+            pointerEvents: 'none',
+          }}
+        >
+          {label}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const traceNodeTypes = {
   traceNode: memo(TraceNodeComponent),
   gateNode: memo(GateNodeComponent),
+  group: memo(GroupNodeComponent),
 };
