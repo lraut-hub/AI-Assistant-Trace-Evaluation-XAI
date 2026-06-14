@@ -1,3 +1,5 @@
+Link to Prototype : ai-assistant-trace-evaluation-xai-a-mu.vercel.app
+
 # AI Eval Canvas
 
 An open-source Gemini-style AI assistant with two modes:
